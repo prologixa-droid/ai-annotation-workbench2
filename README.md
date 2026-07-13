@@ -4,10 +4,13 @@ A realistic AI data annotation work environment simulator for training students 
 
 ## Features
 
-- **50 New Images Daily**: Uses Picsum Photos with date-based seeds — every day gets a fresh batch of 50 unique images
+- **50 New Images Daily**: Uses Picsum Photos with date-based seeds — same 50 images all day, new set tomorrow
+- **High Resolution Images**: 1600x1067 pixels for crisp annotation detail
+- **No Scroll Needed**: Entire interface fits in viewport — image auto-scales to available space
 - **Session-Based Scoring**: Every page reload starts a brand new session with zero stats (no persistence)
 - **Per-Image Review**: After each image, see precision %, time spent, and a score out of 100
 - **Final Report**: After 50 images, see overall accuracy, total score, time spent, and performance breakdown
+- **Responsive Canvas**: Image resizes automatically on window resize, maintains aspect ratio
 - **Real Photos**: Street scene images from Picsum Photos (free, no attribution)
 - **Interactive Canvas**: Click and drag to draw bounding boxes on real photos
 - **5 Object Classes**: Car, Truck, Pedestrian, Cyclist, Traffic Light
@@ -16,11 +19,12 @@ A realistic AI data annotation work environment simulator for training students 
 
 Images are generated using the formula:
 ```
-https://picsum.photos/seed/YYYYMMDD_i/900/600
+https://picsum.photos/seed/YYYYMMDD_i/1600/1067
 ```
 Where `YYYYMMDD` is today's date and `i` is the image index (0-49). This means:
 - **Same date = same 50 images** (everyone gets the same batch)
 - **New date = new 50 images** (fresh batch every day)
+- **High resolution** — 1600x1067 for clear annotation detail
 - **No storage needed** — images load directly from Picsum CDN
 
 ## Deployment
@@ -36,7 +40,7 @@ Where `YYYYMMDD` is today's date and `i` is the image index (0-49). This means:
 ```
 ai-annotation-workbench/
 ├── index.html      # Main UI with modals
-├── app.js          # Session logic, daily images, scoring
+├── app.js          # Session logic, daily images, scoring, responsive canvas
 ├── .nojekyll       # Disables Jekyll (GitHub Pages)
 └── README.md       # This file
 ```

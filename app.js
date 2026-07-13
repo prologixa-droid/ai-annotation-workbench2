@@ -1,9 +1,10 @@
 (function() {
   // ============ CONFIGURATION ============
   const TOTAL_IMAGES_PER_SESSION = 50;
+  const IMAGE_WIDTH = 1600;
+  const IMAGE_HEIGHT = 1067;
 
   // ============ SESSION STATE ============
-  // Every page reload = new session (no localStorage persistence)
   let sessionStartTime = Date.now();
   let currentImageIndex = 0;
   let annotations = [];
@@ -13,9 +14,8 @@
   let startX, startY;
   let imageStartTime = Date.now();
 
-  // Session tracking
   let completedCount = 0;
-  let sessionScores = []; // Array of {precision, time, score}
+  let sessionScores = [];
   let excellentCount = 0;
   let goodCount = 0;
   let poorCount = 0;
@@ -24,7 +24,7 @@
   const today = new Date();
   const batchId = '' + today.getFullYear() + String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
 
-  // Generate 50 unique image URLs based on today's date (deterministic)
+  // Generate 50 unique high-res image URLs based on today's date
   function generateDailyImages() {
     const images = [];
     const keywords = ['street','city','road','traffic','highway','intersection','avenue','downtown','crosswalk','pedestrian'];
@@ -34,7 +34,7 @@
       images.push({
         id: i + 1,
         name: keyword + '_' + String(i+1).padStart(3,'0') + '.jpg',
-        url: 'https://picsum.photos/seed/' + seed + '/900/600',
+        url: 'https://picsum.photos/seed/' + seed + '/' + IMAGE_WIDTH + '/' + IMAGE_HEIGHT,
         type: 'Bounding Box'
       });
     }
@@ -56,6 +56,7 @@
   const canvas = document.getElementById('annotationCanvas');
   const ctx = canvas.getContext('2d');
   const imageLoader = document.getElementById('imageLoader');
+  const canvasContainer = document.getElementById('canvasContainer');
 
   // ============ CLOCK ============
   function updateClock() {
@@ -84,7 +85,45 @@
     document.getElementById('progressText').textContent = progress + '%';
   }
 
+  // ============ RESPONSIVE CANVAS SIZING ============
+  function fitCanvasToContainer() {
+    const container = canvasContainer.parentElement;
+    const containerW = container.clientWidth - 16; // padding
+    const containerH = container.clientHeight - 16;
+
+    const imgRatio = IMAGE_WIDTH / IMAGE_HEIGHT;
+    const containerRatio = containerW / containerH;
+
+    let w, h;
+    if (imgRatio > containerRatio) {
+      w = containerW;
+      h = w / imgRatio;
+    } else {
+      h = containerH;
+      w = h * imgRatio;
+    }
+
+    // Ensure minimum size
+    w = Math.max(w, 400);
+    h = Math.max(h, 300);
+
+    // Cap at container
+    w = Math.min(w, containerW);
+    h = Math.min(h, containerH);
+
+    canvasContainer.style.width = w + 'px';
+    canvasContainer.style.height = h + 'px';
+    canvas.width = w;
+    canvas.height = h;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+
+    return { width: w, height: h };
+  }
+
   // ============ IMAGE LOADING ============
+  let currentImage = null;
+
   function loadImage(index) {
     currentImageIndex = index;
     annotations = [];
@@ -102,27 +141,10 @@
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = function() {
+      currentImage = img;
       imageLoader.style.display = 'none';
 
-      const container = document.getElementById('canvasContainer');
-      const containerWidth = container.clientWidth;
-      const containerHeight = container.clientHeight;
-      const imgRatio = img.width / img.height;
-      const containerRatio = containerWidth / containerHeight;
-
-      let canvasWidth, canvasHeight;
-      if (imgRatio > containerRatio) {
-        canvasWidth = Math.min(containerWidth, 900);
-        canvasHeight = canvasWidth / imgRatio;
-      } else {
-        canvasHeight = Math.min(containerHeight, 600);
-        canvasWidth = canvasHeight * imgRatio;
-      }
-
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
-      canvas.style.width = canvasWidth + 'px';
-      canvas.style.height = canvasHeight + 'px';
+      const dims = fitCanvasToContainer();
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -131,12 +153,13 @@
     };
     img.onerror = function() {
       imageLoader.style.display = 'none';
+      const dims = fitCanvasToContainer();
       ctx.fillStyle = '#e2e8f0';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#94a3b8';
-      ctx.font = '16px sans-serif';
+      ctx.font = '14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Image loading...', canvas.width/2, canvas.height/2);
+      ctx.fillText('Image loading failed. Please refresh.', canvas.width/2, canvas.height/2);
     };
     img.src = data.url;
   }
@@ -147,14 +170,14 @@
     imageData.forEach((img, idx) => {
       const status = idx < currentImageIndex ? 'done' : idx === currentImageIndex ? 'active' : 'pending';
       const div = document.createElement('div');
-      div.className = 'flex items-center gap-3 p-2 rounded-lg text-sm cursor-pointer transition-colors ' + 
+      div.className = 'flex items-center gap-2 p-1.5 rounded text-xs cursor-pointer transition-colors ' + 
         (status === 'active' ? 'bg-blue-50 border border-blue-200' : status === 'done' ? 'opacity-60' : 'hover:bg-slate-50 border border-transparent');
-      div.innerHTML = '<div class="w-2 h-2 rounded-full ' + 
+      div.innerHTML = '<div class="w-1.5 h-1.5 rounded-full ' + 
         (status === 'active' ? 'bg-blue-500 animate-pulse' : status === 'done' ? 'bg-green-400' : 'bg-slate-300') + '"></div>' +
         '<div class="flex-1 min-w-0"><div class="font-medium text-slate-700 truncate">' + img.name + '</div>' +
         '<div class="text-xs text-slate-400">' + img.type + '</div></div>' +
-        (status === 'active' ? '<span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Active</span>' : 
-         status === 'done' ? '<span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Done</span>' : '');
+        (status === 'active' ? '<span class="text-xs bg-blue-100 text-blue-700 px-1 py-0 rounded">Active</span>' : 
+         status === 'done' ? '<span class="text-xs bg-green-100 text-green-700 px-1 py-0 rounded">Done</span>' : '');
       div.addEventListener('click', () => {
         if (status !== 'done') loadImage(idx);
       });
@@ -164,14 +187,10 @@
 
   // ============ CANVAS ANNOTATION ============
   function redrawCanvas() {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = imageData[currentImageIndex].url;
-    img.onload = function() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      annotations.forEach(a => drawAnnotation(a));
-    };
+    if (!currentImage) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+    annotations.forEach(a => drawAnnotation(a));
   }
 
   canvas.addEventListener('mousedown', e => {
@@ -241,16 +260,16 @@
   function updateAnnotationList() {
     const list = document.getElementById('annotationList');
     if (annotations.length === 0) {
-      list.innerHTML = '<div class="text-sm text-slate-400 italic">No annotations yet. Draw a box to begin.</div>';
+      list.innerHTML = '<div class="text-xs text-slate-400 italic">No annotations yet. Draw a box to begin.</div>';
       return;
     }
     list.innerHTML = annotations.map(a => 
-      '<div class="flex items-center gap-2 text-sm p-1.5 rounded hover:bg-slate-100 group animate-slide-in">' +
-      '<div class="w-3 h-3 rounded" style="background:' + classColors[a.class] + '"></div>' +
-      '<span class="flex-1 font-medium text-slate-700">' + classNames[a.class] + '</span>' +
+      '<div class="flex items-center gap-1.5 text-xs p-1 rounded hover:bg-slate-100 group animate-slide-in">' +
+      '<div class="w-2.5 h-2.5 rounded shrink-0" style="background:' + classColors[a.class] + '"></div>' +
+      '<span class="flex-1 font-medium text-slate-700 truncate">' + classNames[a.class] + '</span>' +
       '<span class="text-xs text-slate-400 font-mono">' + Math.round(a.x) + ',' + Math.round(a.y) + '</span>' +
       '<button onclick="window.deleteAnnotation(' + a.id + ')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity">' +
-      '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div>'
+      '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div>'
     ).join('');
   }
 
@@ -327,21 +346,16 @@
     const timeSpent = Math.floor((Date.now() - imageStartTime) / 1000);
     const expectedObjects = Math.floor(2 + Math.random() * 4);
 
-    // Calculate precision based on annotation quality
     let precision = 0;
     if (annotations.length > 0) {
-      // Base precision on number of annotations vs expected
       const countRatio = Math.min(annotations.length / expectedObjects, 1);
-      // Add some randomness for realism
       precision = Math.floor(60 + (countRatio * 30) + (Math.random() * 10));
       precision = Math.min(100, Math.max(0, precision));
     }
 
-    // Calculate image score (0-100)
     const timeBonus = timeSpent < 60 ? 10 : timeSpent < 120 ? 5 : 0;
     const imageScore = Math.min(100, precision + timeBonus);
 
-    // Store session data
     sessionScores.push({ precision: precision, time: timeSpent, score: imageScore });
     if (precision >= 90) excellentCount++;
     else if (precision >= 70) goodCount++;
@@ -350,7 +364,6 @@
     completedCount++;
     updateStats();
 
-    // Show review modal
     const modal = document.getElementById('reviewModal');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -362,23 +375,23 @@
     document.getElementById('reviewScore').textContent = imageScore + '/100';
 
     if (precision >= 90) {
-      document.getElementById('reviewIcon').className = 'w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center';
-      document.getElementById('reviewIcon').innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+      document.getElementById('reviewIcon').className = 'w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center';
+      document.getElementById('reviewIcon').innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
       document.getElementById('reviewTitle').textContent = 'Excellent Work!';
-      document.getElementById('reviewTitle').className = 'font-semibold text-lg text-green-700';
-      document.getElementById('reviewSubtitle').textContent = 'Your annotations meet quality standards.';
+      document.getElementById('reviewTitle').className = 'font-semibold text-sm text-green-700';
+      document.getElementById('reviewSubtitle').textContent = 'Annotations meet quality standards.';
     } else if (precision >= 70) {
-      document.getElementById('reviewIcon').className = 'w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center';
-      document.getElementById('reviewIcon').innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>';
+      document.getElementById('reviewIcon').className = 'w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center';
+      document.getElementById('reviewIcon').innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>';
       document.getElementById('reviewTitle').textContent = 'Good Job';
-      document.getElementById('reviewTitle').className = 'font-semibold text-lg text-amber-700';
-      document.getElementById('reviewSubtitle').textContent = 'Decent work, but there is room for improvement.';
+      document.getElementById('reviewTitle').className = 'font-semibold text-sm text-amber-700';
+      document.getElementById('reviewSubtitle').textContent = 'Decent work, room for improvement.';
     } else {
-      document.getElementById('reviewIcon').className = 'w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center';
-      document.getElementById('reviewIcon').innerHTML = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+      document.getElementById('reviewIcon').className = 'w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center';
+      document.getElementById('reviewIcon').innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
       document.getElementById('reviewTitle').textContent = 'Needs Improvement';
-      document.getElementById('reviewTitle').className = 'font-semibold text-lg text-red-700';
-      document.getElementById('reviewSubtitle').textContent = 'Please review the guidelines and try again.';
+      document.getElementById('reviewTitle').className = 'font-semibold text-sm text-red-700';
+      document.getElementById('reviewSubtitle').textContent = 'Please review the guidelines.';
     }
   });
 
@@ -405,7 +418,6 @@
     modal.classList.remove('hidden');
     modal.classList.add('flex');
 
-    // Calculate totals
     const totalPrecision = sessionScores.reduce((a,b) => a + b.precision, 0);
     const avgPrecision = sessionScores.length > 0 ? (totalPrecision / sessionScores.length).toFixed(1) : '0.0';
     const totalScore = sessionScores.reduce((a,b) => a + b.score, 0);
@@ -419,7 +431,6 @@
     document.getElementById('goodCount').textContent = goodCount;
     document.getElementById('poorCount').textContent = poorCount;
 
-    // Confetti effect
     for (let i = 0; i < 50; i++) {
       setTimeout(() => createConfetti(), i * 50);
     }
@@ -439,7 +450,6 @@
 
   // ============ RESTART SESSION ============
   document.getElementById('restartBtn').addEventListener('click', () => {
-    // Reload page = fresh session (no localStorage)
     window.location.reload();
   });
 
@@ -450,6 +460,18 @@
     toast.classList.remove('translate-y-20', 'opacity-0');
     setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3000);
   }
+
+  // ============ WINDOW RESIZE ============
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      if (currentImage) {
+        fitCanvasToContainer();
+        redrawCanvas();
+      }
+    }, 200);
+  });
 
   // ============ INITIALIZE ============
   document.getElementById('batchId').textContent = batchId;
