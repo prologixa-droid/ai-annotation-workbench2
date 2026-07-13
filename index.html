@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DataLabel Pro - Annotation Workbench</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .tool-btn.active { transform: scale(1.05); }
+    .class-btn { transition: all 0.15s ease; }
+    .class-btn:hover { transform: translateX(2px); }
+    canvas { image-rendering: crisp-edges; }
+    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-slide-in { animation: slideIn 0.3s ease-out; }
+    .image-loader { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+    .confetti { position: fixed; width: 10px; height: 10px; background: #f00; animation: confetti-fall 3s linear forwards; z-index: 100; }
+    @keyframes confetti-fall { 0% { transform: translateY(-100px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+  <div id="app" class="min-h-screen flex flex-col">
+    <nav class="bg-slate-900 text-white px-4 py-2 flex items-center justify-between sticky top-0 z-50 shadow-lg">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-sm">AI</div>
+        <span class="font-semibold tracking-wide">DataLabel Pro</span>
+        <span class="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300 ml-2">v2.4.1</span>
+      </div>
+      <div class="flex items-center gap-6 text-sm">
+        <div class="flex items-center gap-2 text-slate-300">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <span id="clock">09:42:18</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+          <span class="text-green-400 text-xs">Online</span>
+        </div>
+        <div class="flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-full">
+          <div class="w-6 h-6 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-xs font-bold">JD</div>
+          <span class="text-sm">John Doe</span>
+          <span class="text-xs text-slate-400">Annotator L3</span>
+        </div>
+      </div>
+    </nav>
+
+    <div class="flex flex-1 h-[calc(100vh-48px)]">
+      <aside class="w-64 bg-white border-r border-slate-200 flex flex-col">
+        <div class="p-4 border-b border-slate-100">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Project</div>
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div class="font-semibold text-blue-900 text-sm">Street Scene Dataset</div>
+            <div class="text-xs text-blue-600 mt-1">Batch #<span id="batchId">2847</span> &bull; <span id="totalImagesDisplay">50</span> images</div>
+            <div class="mt-2 flex items-center gap-2">
+              <div class="flex-1 h-1.5 bg-blue-200 rounded-full overflow-hidden">
+                <div class="h-full bg-blue-500 rounded-full transition-all duration-500" id="projectProgress" style="width: 0%"></div>
+              </div>
+              <span class="text-xs text-blue-700 font-medium" id="progressText">0%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4 flex-1 overflow-y-auto scrollbar-thin">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Queue</div>
+          <div class="space-y-2" id="taskQueue"></div>
+        </div>
+
+        <div class="p-4 border-t border-slate-100 bg-slate-50">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Session Stats</div>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="bg-white p-2 rounded border border-slate-200 text-center">
+              <div class="text-lg font-bold text-slate-800" id="statCompleted">0</div>
+              <div class="text-xs text-slate-500">Completed</div>
+            </div>
+            <div class="bg-white p-2 rounded border border-slate-200 text-center">
+              <div class="text-lg font-bold text-green-600" id="statAccuracy">--</div>
+              <div class="text-xs text-slate-500">Accuracy</div>
+            </div>
+            <div class="bg-white p-2 rounded border border-slate-200 text-center">
+              <div class="text-lg font-bold text-amber-600" id="statTime">0.0h</div>
+              <div class="text-xs text-slate-500">Active</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="flex-1 flex flex-col bg-slate-100 overflow-hidden">
+        <div class="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 text-sm text-slate-600">
+              <span class="font-medium">Image <span id="imageBatchId">2847</span>-<span id="imageNum">001</span>:</span>
+              <span class="text-slate-400" id="imageName">street_scene_001.jpg</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="p-1.5 hover:bg-slate-100 rounded text-slate-500" title="Previous" id="prevBtn">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+              </button>
+              <span class="text-sm text-slate-400 px-2" id="imageCounter">1 / 50</span>
+              <button class="p-1.5 hover:bg-slate-100 rounded text-slate-500" title="Next" id="nextBtn">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50 text-slate-600 flex items-center gap-1" id="skipBtn">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              Skip
+            </button>
+            <button class="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50 text-slate-600 flex items-center gap-1" id="helpBtn">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              Help
+            </button>
+            <button id="submitBtn" class="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded font-medium flex items-center gap-1 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+              Submit & Next
+            </button>
+          </div>
+        </div>
+
+        <div class="flex-1 flex overflow-hidden">
+          <div class="flex-1 p-4 flex items-center justify-center bg-slate-100 relative">
+            <div class="relative bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden" id="canvasContainer" style="max-width: 900px; max-height: 600px;">
+              <div id="imageLoader" class="image-loader absolute inset-0 z-10"></div>
+              <img id="bgImage" src="" alt="Annotation target" class="absolute inset-0 w-full h-full object-contain" style="display:none;">
+              <canvas id="annotationCanvas" width="800" height="500" class="cursor-crosshair relative z-20"></canvas>
+              <div id="canvasOverlay" class="absolute inset-0 flex items-center justify-center bg-black/5 pointer-events-none z-30">
+                <div class="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg text-sm text-slate-600 border border-slate-200">
+                  Click and drag to draw bounding boxes
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="w-80 bg-white border-l border-slate-200 flex flex-col">
+            <div class="p-4 border-b border-slate-100">
+              <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Tools</div>
+              <div class="grid grid-cols-4 gap-2">
+                <button class="tool-btn active p-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-600 flex flex-col items-center gap-1" data-tool="bbox">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"></path></svg>
+                  <span class="text-xs">Box</span>
+                </button>
+                <button class="tool-btn p-2 rounded-lg border-2 border-slate-200 hover:border-slate-300 text-slate-500 flex flex-col items-center gap-1" data-tool="polygon">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                  <span class="text-xs">Poly</span>
+                </button>
+                <button class="tool-btn p-2 rounded-lg border-2 border-slate-200 hover:border-slate-300 text-slate-500 flex flex-col items-center gap-1" data-tool="point">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                  <span class="text-xs">Point</span>
+                </button>
+                <button class="tool-btn p-2 rounded-lg border-2 border-slate-200 hover:border-slate-300 text-slate-500 flex flex-col items-center gap-1" data-tool="erase">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                  <span class="text-xs">Clear</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="p-4 border-b border-slate-100 flex-1 overflow-y-auto scrollbar-thin">
+              <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Object Classes</div>
+              <div class="space-y-2" id="classList">
+                <button class="class-btn w-full flex items-center gap-3 p-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-left" data-class="car">
+                  <div class="w-4 h-4 rounded bg-blue-500"></div>
+                  <div class="flex-1">
+                    <div class="text-sm font-medium text-slate-800">Car</div>
+                    <div class="text-xs text-slate-500">4-wheel passenger vehicle</div>
+                  </div>
+                  <span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">1</span>
+                </button>
+                <button class="class-btn w-full flex items-center gap-3 p-2 rounded-lg border-2 border-transparent hover:bg-slate-50 text-left" data-class="truck">
+                  <div class="w-4 h-4 rounded bg-amber-500"></div>
+                  <div class="flex-1">
+                    <div class="text-sm font-medium text-slate-800">Truck</div>
+                    <div class="text-xs text-slate-500">Commercial freight vehicle</div>
+                  </div>
+                  <span class="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">2</span>
+                </button>
+                <button class="class-btn w-full flex items-center gap-3 p-2 rounded-lg border-2 border-transparent hover:bg-slate-50 text-left" data-class="pedestrian">
+                  <div class="w-4 h-4 rounded bg-green-500"></div>
+                  <div class="flex-1">
+                    <div class="text-sm font-medium text-slate-800">Pedestrian</div>
+                    <div class="text-xs text-slate-500">Person walking or standing</div>
+                  </div>
+                  <span class="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">3</span>
+                </button>
+                <button class="class-btn w-full flex items-center gap-3 p-2 rounded-lg border-2 border-transparent hover:bg-slate-50 text-left" data-class="cyclist">
+                  <div class="w-4 h-4 rounded bg-purple-500"></div>
+                  <div class="flex-1">
+                    <div class="text-sm font-medium text-slate-800">Cyclist</div>
+                    <div class="text-xs text-slate-500">Bicycle or motorcycle rider</div>
+                  </div>
+                  <span class="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">4</span>
+                </button>
+                <button class="class-btn w-full flex items-center gap-3 p-2 rounded-lg border-2 border-transparent hover:bg-slate-50 text-left" data-class="traffic_light">
+                  <div class="w-4 h-4 rounded bg-red-500"></div>
+                  <div class="flex-1">
+                    <div class="text-sm font-medium text-slate-800">Traffic Light</div>
+                    <div class="text-xs text-slate-500">Signal control device</div>
+                  </div>
+                  <span class="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">5</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="p-4 bg-slate-50 border-t border-slate-200 max-h-48 overflow-y-auto scrollbar-thin">
+              <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Current Labels</div>
+              <div id="annotationList">
+                <div class="text-sm text-slate-400 italic">No annotations yet. Draw a box to begin.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Per-Image Review Modal -->
+  <div id="reviewModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-slide-in">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <h3 class="font-semibold">Image Review</h3>
+        <button id="closeReview" class="text-slate-400 hover:text-white transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div class="p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <div id="reviewIcon" class="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+          </div>
+          <div>
+            <div id="reviewTitle" class="font-semibold text-lg">Excellent Work!</div>
+            <div id="reviewSubtitle" class="text-sm text-slate-500">Your annotations meet quality standards.</div>
+          </div>
+        </div>
+        <div class="space-y-3 mb-6">
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-500">Objects Detected</span>
+            <span class="font-medium" id="reviewObjects">3 / 3</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-500">Box Precision</span>
+            <span class="font-medium text-green-600" id="reviewPrecision">94%</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-500">Time per Image</span>
+            <span class="font-medium" id="reviewTime">45s</span>
+          </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-500">Image Score</span>
+            <span class="font-medium text-blue-600" id="reviewScore">92/100</span>
+          </div>
+        </div>
+        <button id="continueBtn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+          Continue to Next Image
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Final Report Modal -->
+  <div id="finalReportModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden animate-slide-in">
+      <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-6 text-center">
+        <h3 class="font-bold text-xl">Session Complete!</h3>
+        <p class="text-blue-100 text-sm mt-1">You have finished all 50 images</p>
+      </div>
+      <div class="p-6">
+        <div class="grid grid-cols-2 gap-4 mb-6">
+          <div class="bg-slate-50 rounded-lg p-4 text-center border border-slate-200">
+            <div class="text-3xl font-bold text-blue-600" id="finalAccuracy">94.2%</div>
+            <div class="text-xs text-slate-500 mt-1">Overall Accuracy</div>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-4 text-center border border-slate-200">
+            <div class="text-3xl font-bold text-purple-600" id="finalScore">4,710</div>
+            <div class="text-xs text-slate-500 mt-1">Total Score</div>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-4 text-center border border-slate-200">
+            <div class="text-3xl font-bold text-green-600" id="finalCompleted">50</div>
+            <div class="text-xs text-slate-500 mt-1">Images Done</div>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-4 text-center border border-slate-200">
+            <div class="text-3xl font-bold text-amber-600" id="finalTime">0.0h</div>
+            <div class="text-xs text-slate-500 mt-1">Time Spent</div>
+          </div>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div class="text-sm font-medium text-blue-800 mb-2">Performance Breakdown</div>
+          <div class="space-y-2" id="performanceBreakdown">
+            <div class="flex justify-between text-sm"><span class="text-slate-600">Excellent (90%+)</span><span class="font-medium text-green-600" id="excellentCount">32</span></div>
+            <div class="flex justify-between text-sm"><span class="text-slate-600">Good (70-89%)</span><span class="font-medium text-amber-600" id="goodCount">12</span></div>
+            <div class="flex justify-between text-sm"><span class="text-slate-600">Needs Work (&lt;70%)</span><span class="font-medium text-red-600" id="poorCount">6</span></div>
+          </div>
+        </div>
+        <button id="restartBtn" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          Start New Session
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="helpModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden animate-slide-in">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <h3 class="font-semibold">Annotation Guidelines</h3>
+        <button id="closeHelp" class="text-slate-400 hover:text-white transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div class="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div class="flex gap-3">
+          <div class="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-bold text-sm shrink-0">1</div>
+          <div>
+            <div class="font-medium text-slate-800">Select the correct class</div>
+            <div class="text-sm text-slate-500">Choose the appropriate object category from the right panel before drawing.</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-bold text-sm shrink-0">2</div>
+          <div>
+            <div class="font-medium text-slate-800">Draw tight bounding boxes</div>
+            <div class="text-sm text-slate-500">Boxes should touch the outermost pixels of the object. No extra space.</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-bold text-sm shrink-0">3</div>
+          <div>
+            <div class="font-medium text-slate-800">Occluded objects</div>
+            <div class="text-sm text-slate-500">If an object is partially hidden, estimate the full extent of the object.</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-bold text-sm shrink-0">4</div>
+          <div>
+            <div class="font-medium text-slate-800">Minimum size</div>
+            <div class="text-sm text-slate-500">Only label objects larger than 10x10 pixels. Ignore distant specks.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-4 right-4 bg-slate-800 text-white px-4 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center gap-3">
+    <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    <span id="toastMsg">Annotation saved</span>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
